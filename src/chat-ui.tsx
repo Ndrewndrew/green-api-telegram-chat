@@ -4,6 +4,8 @@ import { GreenApi, parseRecipient } from './api';
 import type { Chat, Message } from './api';
 import type { ChatState } from './chat';
 import { Icon } from './Icon';
+import { DeveloperInfo, DeveloperToggle } from './DeveloperTools';
+import type { DeveloperModeProps } from './DeveloperTools';
 
 const time = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString('ru-RU', {
@@ -28,16 +30,20 @@ export function ChatSidebar({
   onExit,
   onSelect,
   onAdd,
+  apiUrl,
+  developerMode,
+  onToggleDeveloperMode,
 }: {
   api: GreenApi | null;
   instance: string;
+  apiUrl?: string;
   state: ChatState;
   pollError: string;
   signal: AbortSignal;
   onExit: () => void;
   onSelect: (id: string) => void;
   onAdd: (chat: Chat) => void;
-}) {
+} & DeveloperModeProps) {
   const demo = !api;
   const [recipient, setRecipient] = useState('');
   const [query, setQuery] = useState('');
@@ -180,11 +186,30 @@ export function ChatSidebar({
           </p>
         )}
       </nav>
+      <div className="sidebar-devtools">
+        <DeveloperToggle
+          developerMode={developerMode}
+          onToggleDeveloperMode={onToggleDeveloperMode}
+        />
+        {developerMode ? (
+          <DeveloperInfo
+            demo={demo}
+            apiUrl={apiUrl}
+            instance={demo ? undefined : instance}
+          />
+        ) : null}
+      </div>
       <footer className="connection">
         <span className={`connection-dot ${pollError ? 'warning' : ''}`} />
         <div>
           <strong>{demo ? 'Деморежим' : 'Инстанс подключён'}</strong>
-          <small>{demo ? 'Без отправки в Telegram' : `ID ${instance}`}</small>
+          <small>
+            {demo
+              ? 'Без отправки в Telegram'
+              : developerMode
+                ? `ID ${instance}`
+                : 'Через GREEN-API'}
+          </small>
         </div>
       </footer>
     </aside>

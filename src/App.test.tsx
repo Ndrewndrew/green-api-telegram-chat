@@ -72,8 +72,8 @@ it('completes login → phone lookup → send → receive → logout using the r
   vi.stubGlobal('fetch', fetcher);
   const user = userEvent.setup();
   render(<App />);
-  await user.type(screen.getByLabelText('idInstance'), '4100000000');
-  await user.type(screen.getByLabelText('apiTokenInstance'), 'fixture-token');
+  await user.type(screen.getByLabelText('ID инстанса'), '4100000000');
+  await user.type(screen.getByLabelText('Токен доступа'), 'fixture-token');
   await user.click(screen.getByRole('button', { name: 'Подключить Telegram' }));
   await screen.findByText('Начните разговор');
   await user.type(screen.getByLabelText('Новый чат'), '+79991234567');
@@ -100,7 +100,7 @@ it('completes login → phone lookup → send → receive → logout using the r
   await user.click(screen.getByRole('button', { name: 'Выйти из чата' }));
   await screen.findByRole('button', { name: 'Подключить Telegram' });
   expect(
-    (screen.getByLabelText('apiTokenInstance') as HTMLInputElement).value,
+    (screen.getByLabelText('Токен доступа') as HTMLInputElement).value,
   ).toBe('');
 });
 
@@ -144,8 +144,8 @@ it('shows a send failure without silently resending or losing text', async () =>
   vi.stubGlobal('fetch', fetcher);
   const user = userEvent.setup();
   render(<App />);
-  await user.type(screen.getByLabelText('idInstance'), '4100000000');
-  await user.type(screen.getByLabelText('apiTokenInstance'), 'fixture-token');
+  await user.type(screen.getByLabelText('ID инстанса'), '4100000000');
+  await user.type(screen.getByLabelText('Токен доступа'), 'fixture-token');
   await user.click(screen.getByRole('button', { name: 'Подключить Telegram' }));
   await screen.findByText('Начните разговор');
   await user.type(screen.getByLabelText('Новый чат'), '@alex_test');
@@ -164,4 +164,109 @@ it('shows a send failure without silently resending or losing text', async () =>
   expect(
     fetcher.mock.calls.filter(([url]) => url.includes('sendMessage')),
   ).toHaveLength(1);
+});
+
+it('keeps setup simple and preserves credentials when switching developer mode', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  const user = userEvent.setup();
+  render(<App />);
+  expect(screen.queryByLabelText(/Адрес сервера/)).toBeNull();
+  await user.type(screen.getByLabelText('ID инстанса'), '4100000000');
+  await user.type(
+    screen.getByLabelText('Токен доступа'),
+    'private-fixture-token',
+  );
+  await user.click(screen.getByRole('button', { name: /Режим разработчика/ }));
+  expect(screen.getByLabelText(/Адрес сервера/)).toBeTruthy();
+  expect(
+    screen.getByText('apiTokenInstance', { selector: 'code' }),
+  ).toBeTruthy();
+  const token = screen.getByLabelText(/Токен доступа/) as HTMLInputElement;
+  expect(token.value).toBe('private-fixture-token');
+  expect(token.type).toBe('password');
+  expect(
+    screen.getByRole('region', { name: 'Технические сведения' }).textContent,
+  ).not.toContain('private-fixture-token');
+  await user.clear(screen.getByLabelText(/Адрес сервера/));
+  await user.type(
+    screen.getByLabelText(/Адрес сервера/),
+    'https://4100.api.green-api.com',
+  );
+  await user.click(screen.getByRole('button', { name: /Режим разработчика/ }));
+  expect(screen.queryByLabelText(/Адрес сервера/)).toBeNull();
+  expect(
+    (screen.getByLabelText('Токен доступа') as HTMLInputElement).value,
+  ).toBe('private-fixture-token');
+  await user.click(
+    screen.getByRole('button', { name: /Настройки подключения/ }),
+  );
+  expect(
+    (screen.getByLabelText('Адрес сервера') as HTMLInputElement).value,
+  ).toBe('https://4100.api.green-api.com');
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('keeps developer mode separate from demo and does not pretend to run live requests', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: /Режим разработчика/ }));
+  await user.click(screen.getByRole('button', { name: 'Посмотреть демо' }));
+  expect(
+    screen.getByText('Демо: запросы к GREEN-API не выполняются.'),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Это схема методов, а не журнал запросов или подтверждение доставки.',
+    ),
+  ).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: /Режим разработчика/ }));
+  expect(
+    screen.queryByRole('region', { name: 'Технические сведения' }),
+  ).toBeNull();
+  expect(screen.getByLabelText('Текст сообщения')).toBeTruthy();
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('checks settings before Telegram login and shows the remaining authorization step', async () => {
+  let authorized = false;
+  const fetcher = vi.fn(async (input: string) => {
+    if (input.includes('getStateInstance'))
+      return Response.json({
+        stateInstance: authorized ? 'authorized' : 'notAuthorized',
+      });
+    if (input.includes('getSettings'))
+      return Response.json({
+        typeInstance: 'telegram',
+        incomingWebhook: 'yes',
+        outgoingWebhook: 'yes',
+        webhookUrl: '',
+      });
+    if (input.includes('receiveNotification')) return Response.json(null);
+    throw new Error('Unexpected request before Telegram authorization');
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const user = userEvent.setup();
+  render(<App />);
+  await user.type(screen.getByLabelText('ID инстанса'), '410012345678');
+  await user.type(screen.getByLabelText('Токен доступа'), 'fixture-token');
+  await user.click(screen.getByRole('button', { name: 'Подключить Telegram' }));
+  await screen.findByRole('heading', { name: 'Осталось подключить Telegram' });
+  expect(screen.getByText('Входящие сообщения включены')).toBeTruthy();
+  expect(
+    fetcher.mock.calls.some(([url]) => url.includes('/getSettings/')),
+  ).toBe(true);
+  expect(
+    fetcher.mock.calls.every(([url]) =>
+      url.startsWith('https://4100.api.green-api.com/'),
+    ),
+  ).toBe(true);
+  expect(
+    (screen.getByLabelText('Токен доступа') as HTMLInputElement).value,
+  ).toBe('fixture-token');
+  authorized = true;
+  await user.click(screen.getByRole('button', { name: 'Проверить снова' }));
+  await screen.findByText('Начните разговор');
 });

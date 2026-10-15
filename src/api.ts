@@ -3,6 +3,30 @@ export type Credentials = {
   idInstance: string;
   apiTokenInstance: string;
 };
+
+export type ConnectionCheck = {
+  stateInstance: string;
+  incomingEnabled: boolean;
+  statusesEnabled: boolean;
+  webhookEmpty: boolean;
+};
+
+export class SetupRequiredError extends Error {
+  constructor(public readonly check: ConnectionCheck) {
+    super(
+      check.stateInstance !== 'authorized'
+        ? 'Авторизуйте Telegram-инстанс в кабинете GREEN-API и подключитесь снова.'
+        : 'В кабинете очистите webhookUrl и включите incomingWebhook. После сохранения дождитесь применения настроек.',
+    );
+  }
+}
+
+export function suggestApiUrl(idInstance: string) {
+  const id = idInstance.trim();
+  return /^\d{4,}$/.test(id)
+    ? `https://${id.slice(0, 4)}.api.green-api.com`
+    : 'https://api.green-api.com';
+}
 export type Message = {
   id: string;
   chatId: string;
@@ -27,7 +51,14 @@ export class ApiError extends Error {
 }
 
 export function validateCredentials(input: Credentials): Credentials {
-  const apiUrl = new URL(input.apiUrl.trim());
+  let apiUrl: URL;
+  try {
+    apiUrl = new URL(input.apiUrl.trim());
+  } catch {
+    throw new Error(
+      'Проверьте адрес сервера в настройках подключения. Нужен HTTPS-адрес из кабинета GREEN-API.',
+    );
+  }
   if (
     apiUrl.protocol !== 'https:' ||
     !/^(?:[a-z0-9-]+\.)?api\.green-api\.com$/.test(apiUrl.hostname) ||
@@ -128,27 +159,37 @@ export class GreenApi {
   }
 
   async connect(signal?: AbortSignal) {
-    const state = await this.request<{ stateInstance: string }>(
-      'getStateInstance',
-      'GET',
-      undefined,
-      signal,
-    );
-    if (state?.stateInstance !== 'authorized')
-      throw new ApiError(
-        'Авторизуйте Telegram-инстанс в кабинете GREEN-API и подключитесь снова.',
-      );
-    const settings = await this.request<{
-      webhookUrl?: string;
-      incomingWebhook?: string;
-      typeInstance?: string;
-    }>('getSettings', 'GET', undefined, signal);
+    const [state, settings] = await Promise.all([
+      this.request<{ stateInstance: string }>(
+        'getStateInstance',
+        'GET',
+        undefined,
+        signal,
+      ),
+      this.request<{
+        webhookUrl?: string;
+        incomingWebhook?: string;
+        outgoingWebhook?: string;
+        typeInstance?: string;
+      }>('getSettings', 'GET', undefined, signal),
+    ]);
+    if (!state?.stateInstance || !settings || typeof settings !== 'object')
+      throw new ApiError('GREEN-API вернул неполные данные подключения.');
     if (settings.typeInstance && settings.typeInstance !== 'telegram')
       throw new ApiError('Нужен инстанс Telegram. Проверьте idInstance.');
-    if (settings.webhookUrl || settings.incomingWebhook !== 'yes')
-      throw new ApiError(
-        'В кабинете очистите webhookUrl и включите incomingWebhook. После сохранения подождите минуту.',
-      );
+    const check: ConnectionCheck = {
+      stateInstance: state.stateInstance,
+      incomingEnabled: settings.incomingWebhook === 'yes',
+      statusesEnabled: settings.outgoingWebhook === 'yes',
+      webhookEmpty: !settings.webhookUrl,
+    };
+    if (
+      check.stateInstance !== 'authorized' ||
+      !check.incomingEnabled ||
+      !check.webhookEmpty
+    )
+      throw new SetupRequiredError(check);
+    return check;
   }
 
   async findChat(recipient: string, signal?: AbortSignal): Promise<Chat> {

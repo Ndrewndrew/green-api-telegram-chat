@@ -79,13 +79,20 @@ describe('GREEN-API requests', () => {
     expect(fetcher.mock.calls[0][0]).toContain('/getStateInstance/');
     expect(fetcher.mock.calls[1][0]).toContain('/getSettings/');
   });
-  it('rejects an unauthorized instance before reading settings', async () => {
+  it('reports an unauthorized instance after also checking settings', async () => {
     const fetcher = vi
       .fn()
-      .mockResolvedValue(Response.json({ stateInstance: 'notAuthorized' }));
+      .mockResolvedValueOnce(Response.json({ stateInstance: 'notAuthorized' }))
+      .mockResolvedValueOnce(
+        Response.json({
+          typeInstance: 'telegram',
+          incomingWebhook: 'yes',
+          webhookUrl: '',
+        }),
+      );
     vi.stubGlobal('fetch', fetcher);
     await expect(api().connect()).rejects.toThrow('Авторизуйте');
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it('does not silently override webhook settings', async () => {
     const fetcher = vi
