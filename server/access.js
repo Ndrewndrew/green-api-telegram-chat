@@ -14,8 +14,7 @@ function loginPage(error = false) {
   </style></head><body><main><span class="tag">GREEN-API · TELEGRAM</span><h1>Тестовое задание</h1><p>Введите пароль из письма, чтобы открыть приложение.</p><form method="post" action="/_access/login"><label for="password">Пароль доступа</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200" ${error ? 'aria-invalid="true" aria-describedby="error"' : ''}>${error ? '<p class="error" id="error" role="alert">Пароль не подошёл. Попробуйте ещё раз.</p>' : ''}<button type="submit">Открыть приложение</button></form><p class="foot">React + TypeScript · Отправка и получение сообщений через GREEN-API</p></main></body></html>`;
 }
 
-export function createReviewApp({ password = process.env.REVIEW_ACCESS_PASSWORD, secret = process.env.REVIEW_SESSION_SECRET, distDir = defaultDist, now = () => Date.now() } = {}) {
-  const app = express();
+export function createReviewApp({ app = express(), password = process.env.REVIEW_ACCESS_PASSWORD, secret = process.env.REVIEW_SESSION_SECRET, distDir = defaultDist, now = () => Date.now() } = {}) {
   app.disable('x-powered-by');
   const configured = typeof password === 'string' && password.length >= 8 && typeof secret === 'string' && secret.length >= 32;
   const signature = (value) => createHmac('sha256', secret).update(`${value}:${password}`).digest('base64url');
