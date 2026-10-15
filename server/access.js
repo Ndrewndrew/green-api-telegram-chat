@@ -26,14 +26,16 @@ export function createReviewApp({ app = express(), password = process.env.REVIEW
     return !extra && /^\d+$/.test(expiry) && time > Math.floor(now() / 1000) && time <= Math.floor(now() / 1000) + TTL && typeof mac === 'string' && equal(mac, signature(expiry));
   };
   app.use((req, res, next) => {
-    res.set({ 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex, nofollow', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' });
+    res.set({ 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex, nofollow', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin' });
     if (!configured) return res.status(503).type('text').send('Доступ временно недоступен. Проверьте настройки сервера.');
     next();
   });
   app.use(express.urlencoded({ extended: false, limit: '1kb' }));
   app.post('/_access/login', (req, res) => {
     const origin = req.headers.origin;
-    if (origin) {
+    if (req.headers['sec-fetch-site'] === 'cross-site') return res.sendStatus(403);
+    // Embedded browsers can use an opaque Origin; Fetch Metadata must still be same-origin.
+    if (origin && !(origin === 'null' && req.headers['sec-fetch-site'] === 'same-origin')) {
       try { if (new URL(origin).host !== req.headers.host) return res.sendStatus(403); }
       catch { return res.sendStatus(403); }
     }

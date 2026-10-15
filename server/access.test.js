@@ -53,6 +53,12 @@ describe('server access gate', () => {
     const response = await request(app()).post('/_access/login').set('Origin', 'https://other.example').type('form').send({ password: options.password });
     expect(response.status).toBe(403);
   });
+  it('supports embedded same-origin browsers without accepting cross-site opaque origins', async () => {
+    for (const site of ['same-origin', 'cross-site']) {
+      const response = await request(app()).post('/_access/login').set('Origin', 'null').set('Sec-Fetch-Site', site).type('form').send({ password: options.password });
+      expect(response.status).toBe(site === 'same-origin' ? 303 : 403);
+    }
+  });
   it('does not serve source files after login', async () => {
     const server = app();
     const cookie = (await login(server)).headers['set-cookie'][0];
